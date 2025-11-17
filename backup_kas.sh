@@ -66,6 +66,38 @@ IMAP_TARGET_SSL_FLAGS=${IMAP_TARGET_SSL_FLAGS:---ssl2}
 MAIL_BACKUP_STRATEGY=${MAIL_BACKUP_STRATEGY:-"imapsync"}
 MAILDIR_SSL_TYPE=${MAILDIR_SSL_TYPE:-"IMAPS"}
 
+function prompt_for_value {
+  local var_name=$1
+  local prompt=$2
+  local silent=${3:-0}
+  local allow_empty=${4:-0}
+  local current_value=${!var_name-}
+
+  if [ -n "${current_value}" ]; then
+    return
+  fi
+
+  if [ ! -t 0 ]; then
+    echo "${var_name} ist nicht gesetzt und es steht kein TTY für eine Eingabe zur Verfügung." >&2
+    exit 1
+  fi
+
+  if [ "${silent}" -eq 1 ]; then
+    read -r -s -p "${prompt}: " current_value
+    echo
+  else
+    read -r -p "${prompt}: " current_value
+  fi
+
+  if [ -z "${current_value}" ] && [ "${allow_empty}" -eq 0 ]; then
+    echo "${var_name} wurde nicht gesetzt. Vorgang abgebrochen." >&2
+    exit 1
+  fi
+
+  printf -v "${var_name}" '%s' "${current_value}"
+  export "${var_name}"
+}
+
 function log_line {
   local message=$1
   if [ "$QUIET" -eq 1 ]; then
@@ -126,9 +158,9 @@ function mail_backup {
         return 0
       fi
 
-      if [ -z "${IMAP_TARGET_HOST}" ]; then
-        echo "IMAP_TARGET_HOST ist nicht gesetzt, Mail-Backup wird übersprungen." >&2
-        return 0
+      prompt_for_value "IMAP_TARGET_HOST" "IMAP_TARGET_HOST (Ziel-IMAP-Server)"
+      if [ -z "${IMAP_TARGET_PASSWORD-}" ] && [ -t 0 ]; then
+        prompt_for_value "IMAP_TARGET_PASSWORD" "IMAP_TARGET_PASSWORD (Ziel-Passwort, leer für Quellpasswort)" 1 1
       fi
 
       mkdir_cd mail
@@ -208,6 +240,11 @@ function load_config {
   fi
 }
 
+function ensure_kas_api_credentials {
+  prompt_for_value "KAS_LOGIN" "KAS_LOGIN (KAS-Benutzername)"
+  prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
+}
+
 function kas_api_request() {
   local action=$1
   shift
@@ -264,10 +301,7 @@ PY
 }
 
 function kas_api_backup() {
-  if [ -z "${KAS_LOGIN}" ] || [ -z "${KAS_AUTH_DATA}" ]; then
-    echo "KAS_LOGIN und KAS_AUTH_DATA müssen gesetzt sein, um die API zu nutzen." >&2
-    exit 1
-  fi
+  ensure_kas_api_credentials
 
   log_line "#####################################################################\n# KAS API Backup \n###############################################################"
 
@@ -325,7 +359,11 @@ function kas_api_backup() {
   done
 }
 
-log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n$(date)\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
+load_config "${CONFIG_FILE}"
+
+log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+$(date)
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
 
 if [ "$CRON_MODE" -eq 1 ]; then
   log_line "Cron-Modus aktiv: Ausgabe erfolgt ausschließlich im Log (${LOG_FILE})."
@@ -337,5 +375,3 @@ mkdir_cd db/
 if [ "${ENABLE_KAS_API_BACKUP}" -eq 1 ]; then
   kas_api_backup
 fi
-
-load_config "${CONFIG_FILE}"
