@@ -1,69 +1,50 @@
 # Automatisierte KAS-Backups
 
-Dieses Repository enthält ein einfaches Skript, um Webspace- und MySQL-Datenbanken
-auf Basis der All-Inkl KAS-API zu sichern.
+Dieses Repository enthält Skripte, um Webspace- und MySQL-Datenbanken per All-Inkl KAS-API oder statischer Konfiguration zu sichern. Optional können IMAP-Postfächer mit `imapsync` auf einen zweiten Mailserver gespiegelt werden.
 
-## Verwendung
+## Voraussetzungen
+- SSH-Schlüssel unter `/root/.ssh/id_rsa` mit Zugriff auf den Zielserver (`${HOST}` im Skript).
+- Installierte Werkzeuge: `bash`, `rsync`, `ssh`, `mysqldump`, `python3` (für die API-Auswertung) und optional `imapsync` für E-Mail-Backups.
+- Schreibrechte auf dem Ziel-Backup-Pfad (Standard: `/srv/backup`).
 
-1. Legen Sie den Zielpfad und den Zielhost über Umgebungsvariablen fest (optional):
-   - `BACKUP_PATH` (Standard: `/srv/backup`)
-   - `HOST` (Standard: `w018d9ee.kasserver.com`)
-   - `LOG_FILE` (Standard: `/var/log/kas-backup.log`)
+## Konfiguration
+### Wichtige Umgebungsvariablen
+- `BACKUP_PATH` (Standard: `/srv/backup`)
+- `HOST` (Standard: `w018d9ee.kasserver.com`)
+- `LOG_FILE` (Standard: `/var/log/kas-backup.log`)
+- `KAS_CONFIG_FILE` (Standard: `/etc/backup_kas.conf`)
+- `GENERATED_CONFIG` (Standard: `/tmp/kas_backup_api.sh`)
 
-2. Aktivieren Sie die automatische Konfiguration per KAS-API:
-   - Setzen Sie `ENABLE_KAS_API_BACKUP=1`.
-   - Stellen Sie die API-Zugangsdaten bereit: `KAS_LOGIN` und `KAS_AUTH_DATA`.
-   - Optional können Sie `KAS_API_ENDPOINT` und `KAS_AUTH_TYPE` setzen (Standard: `https://kasapi.kasserver.com/soap/v2.0/` bzw. `plain`).
+### KAS-API-gesteuerte Sicherung
+1. Aktivieren Sie die automatische Konfiguration: `ENABLE_KAS_API_BACKUP=1`.
+2. Stellen Sie die API-Zugangsdaten bereit: `KAS_LOGIN` und `KAS_AUTH_DATA`.
+3. Optional: `KAS_API_ENDPOINT` (Standard: `https://kasapi.kasserver.com/soap/v2.0/`) und `KAS_AUTH_TYPE` (Standard: `plain`).
+4. Das Skript `kas_api_generate_config.sh` erstellt daraus eine Konfigurationsdatei mit `mirror`- und `database_backup`-Aufrufen, die anschließend von `backup_kas.sh` abgearbeitet wird.
 
-3. Falls keine API genutzt werden soll, tragen Sie die gewünschten Sicherungen in
-   `/etc/backup_kas.conf` oder in eine eigene Datei ein und setzen Sie
-   `KAS_CONFIG_FILE` entsprechend. Beispiele finden Sie in `etc/backup_kas.conf`.
+### Statische Konfiguration
+- Hinterlegen Sie gewünschte Sicherungen in `/etc/backup_kas.conf` oder einer eigenen Datei und setzen Sie `KAS_CONFIG_FILE` entsprechend.
+- Beispiele für `mirror`- und `database_backup`-Aufrufe finden Sie in `etc/backup_kas.conf`.
 
-4. Starten Sie das Backup:
-
+## Backups ausführen
 ```bash
 ENABLE_KAS_API_BACKUP=1 KAS_LOGIN=kas12345 KAS_AUTH_DATA=geheim ./backup_kas.sh
 ```
 
-Das Skript `kas_api_generate_config.sh` ruft dazu die KAS-API auf, generiert eine
-Konfigurationsdatei mit `mirror`- und `database_backup`-Aufrufen und führt diese
-anschließend über `backup_kas.sh` aus.
+Alle Backup-Aktionen werden an `${LOG_FILE}` angehängt. Das Skript legt die notwendigen Unterordner in `${BACKUP_PATH}` an und wartet zwischen den Schritten kurze Pausen ein, um Lastspitzen zu vermeiden.
 
-## Hinweise
+## E-Mail-Backups mit imapsync
+Nutzen Sie `imapsync`, um jedes Postfach auf einen separaten IMAP-Server oder ein Archivkonto zu spiegeln. Ein einfaches Beispiel:
 
-- Für die API-Auswertung wird Python 3 benötigt.
-- Die API-Antworten müssen die Felder `login`, `dir`, `db_username`, `db_name`
-  und `db_password` enthalten. Bei abweichenden Feldnamen kann die Funktion
-  `parse_json` in `kas_api_generate_config.sh` angepasst werden.
-- Die SSH-Schlüssel werden wie zuvor unter `/root/.ssh/id_rsa` erwartet.
-# backup_kas
+```bash
+imapsync \
+  --host1 mail.example.com --user1 mailbox@example.com --password1 'QUELLE_PASSWORT' --ssl1 \
+  --host2 backup.imap.local --user2 mailbox@example.com --password2 'BACKUP_PASSWORT' --ssl2 \
+  --usecache --nofoldersizes --tmpdir /tmp \
+  --logfile "${BACKUP_PATH}/mail/mailbox@example.com.log"
+```
 
-Bash-basiertes Hilfsskript, um Datenbanken und Webverzeichnisse von einem Kasserver-System auf einen Backup-Host zu spiegeln.
-
-## Inhalte
-- `backup_kas.sh`: Kernskript, das Verzeichnisse erstellt, die Verbindung zum Host aufbaut und rsync/mysqldump-Backups ausführt.
-- `etc/backup_kas.conf`: Beispielhafte Konfigurationsdatei, die projektspezifische Backup-Befehle enthält.
-- `LICENSE`: Lizenzinformationen für dieses Repository.
-
-## Voraussetzungen
-- SSH-Schlüssel unter `/root/.ssh/id_rsa` mit Zugriff auf den Zielserver (`${HOST}` im Skript).
-- Schreibrechte auf dem Ziel-Backup-Pfad (Standard: `/srv/backup`).
-- Installierte Werkzeuge: `bash`, `rsync`, `ssh`, `mysqldump`.
-
-## Verwendung
-1. Passen Sie die Variablen `BACKUP_PATH` und `HOST` in `backup_kas.sh` an Ihre Umgebung an.
-2. Ergänzen Sie `etc/backup_kas.conf` mit den gewünschten `mirror`- und `database_backup`-Aufrufen.
-3. Stellen Sie sicher, dass das Skript ausführbar ist:
-   ```bash
-   chmod +x backup_kas.sh
-   ```
-4. Starten Sie das Backup (typischerweise via Cron oder manuell):
-   ```bash
-   ./backup_kas.sh
-   ```
-
-## Hinweis zur Protokollierung
-Alle Backup-Aktionen werden an `/var/log/kas-backup.log` angehängt. Nutzen Sie das Log, um Fehler und Durchläufe nachzuvollziehen.
+- Wiederholen Sie den Aufruf pro Postfach (z. B. als Cronjob) und passen Sie Hostnamen sowie Zugangsdaten an.
+- Der Zielserver sollte ein dediziertes Backup-IMAP-Konto bereitstellen, damit keine produktiven Postfächer überschrieben werden.
 
 ## Haftungsausschluss
 Die Beispielkonfiguration enthält Platzhalter-Zugangsdaten. Ersetzen Sie diese durch Ihre produktiven Werte und bewahren Sie sensible Informationen sicher auf.
