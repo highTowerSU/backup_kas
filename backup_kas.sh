@@ -77,7 +77,7 @@ function prompt_for_value {
     return
   fi
 
-  if [ -t 0 ]; then
+  if [ ! -t 0 ]; then
     echo "${var_name} ist nicht gesetzt und es steht kein TTY für eine Eingabe zur Verfügung." >&2
     exit 1
   fi
