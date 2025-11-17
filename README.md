@@ -1,6 +1,6 @@
 # Automatisierte KAS-Backups
 
-Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Daten per All-Inkl KAS-API zu sichern. Die API wird direkt von `backup_kas.sh` angesprochen; eine separate Konfigurationsgenerierung ist nicht mehr nötig und das frühere `kas_api_generate_config.sh` wurde entfernt.
+Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Daten per All-Inkl KAS-API zu sichern. Die API wird direkt von `backup_kas.sh` angesprochen; eine separate Konfigurationsgenerierung ist nicht mehr nötig.
 
 ## Voraussetzungen
 - SSH-Schlüssel unter `/root/.ssh/id_rsa` mit Zugriff auf den Zielserver (`${HOST}` im Skript).
