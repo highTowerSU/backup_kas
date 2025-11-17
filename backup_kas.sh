@@ -63,6 +63,8 @@ IMAP_TARGET_USER_PREFIX=${IMAP_TARGET_USER_PREFIX:-""}
 IMAP_TARGET_USER_SUFFIX=${IMAP_TARGET_USER_SUFFIX:-""}
 IMAP_TARGET_PASSWORD=${IMAP_TARGET_PASSWORD:-""}
 IMAP_TARGET_SSL_FLAGS=${IMAP_TARGET_SSL_FLAGS:---ssl2}
+MAIL_BACKUP_STRATEGY=${MAIL_BACKUP_STRATEGY:-"imapsync"}
+MAILDIR_SSL_TYPE=${MAILDIR_SSL_TYPE:-"IMAPS"}
 
 function log_line {
   local message=$1
@@ -117,28 +119,83 @@ function mail_backup {
   local password=$2
   local address=$3
 
-  if ! command -v imapsync >/dev/null 2>&1; then
-    echo "imapsync ist nicht installiert, Mail-Backup wird übersprungen." >&2
-    return 0
-  fi
+  case "${MAIL_BACKUP_STRATEGY}" in
+    imapsync)
+      if ! command -v imapsync >/dev/null 2>&1; then
+        echo "imapsync ist nicht installiert, Mail-Backup wird übersprungen." >&2
+        return 0
+      fi
 
-  if [ -z "${IMAP_TARGET_HOST}" ]; then
-    echo "IMAP_TARGET_HOST ist nicht gesetzt, Mail-Backup wird übersprungen." >&2
-    return 0
-  fi
+      if [ -z "${IMAP_TARGET_HOST}" ]; then
+        echo "IMAP_TARGET_HOST ist nicht gesetzt, Mail-Backup wird übersprungen." >&2
+        return 0
+      fi
 
-  mkdir_cd mail
-  local target_user="${IMAP_TARGET_USER_PREFIX}${address}${IMAP_TARGET_USER_SUFFIX}"
-  local target_password="${IMAP_TARGET_PASSWORD:-${password}}"
-  local logfile="${BACKUP_PATH}/mail/${address}.log"
+      mkdir_cd mail
+      local target_user="${IMAP_TARGET_USER_PREFIX}${address}${IMAP_TARGET_USER_SUFFIX}"
+      local target_password="${IMAP_TARGET_PASSWORD:-${password}}"
+      local logfile="${BACKUP_PATH}/mail/${address}.log"
 
-  log_line "#####################################################################\n# imapsync ${address} \n###############################################################"
-  imapsync \
-    --host1 "${IMAP_SOURCE_HOST}" --user1 "${address}" --password1 "${password}" --ssl1 \
-    --host2 "${IMAP_TARGET_HOST}" --user2 "${target_user}" --password2 "${target_password}" ${IMAP_TARGET_SSL_FLAGS} \
-    --usecache --nofoldersizes --tmpdir /tmp --logfile "${logfile}" 2>>"${LOG_FILE}"
-  log_line "warte 30 sec"
-  sleep 30
+      log_line "#####################################################################\n# imapsync ${address} \n#######################################################"
+      imapsync \
+        --host1 "${IMAP_SOURCE_HOST}" --user1 "${address}" --password1 "${password}" --ssl1 \
+        --host2 "${IMAP_TARGET_HOST}" --user2 "${target_user}" --password2 "${target_password}" ${IMAP_TARGET_SSL_FLAGS} \
+        --usecache --nofoldersizes --tmpdir /tmp --logfile "${logfile}" 2>>"${LOG_FILE}"
+      log_line "warte 30 sec"
+      sleep 30
+      ;;
+    maildir)
+      if ! command -v mbsync >/dev/null 2>&1; then
+        echo "mbsync ist nicht installiert, Maildir-Backup wird übersprungen." >&2
+        return 0
+      fi
+
+      mkdir_cd mail
+      local maildir_path="${BACKUP_PATH}/mail/${address}"
+      local mbsync_config
+      mbsync_config=$(mktemp)
+
+      cat >"${mbsync_config}" <<EOF
+IMAPAccount source
+Host ${IMAP_SOURCE_HOST}
+User ${address}
+Pass ${password}
+SSLType ${MAILDIR_SSL_TYPE}
+
+IMAPStore source-remote
+Account source
+
+MaildirStore source-local
+Path ${maildir_path}/
+Inbox ${maildir_path}/Inbox
+SubFolders Verbatim
+
+Channel backup
+Master :source-remote:
+Slave :source-local:
+Patterns *
+Create Slave
+SyncState *
+EOF
+
+      mkdir -p "${maildir_path}"
+      log_line "#####################################################################\n# mbsync ${address} -> Maildir \n##################################################"
+
+      if [ "$QUIET" -eq 1 ]; then
+        mbsync -c "${mbsync_config}" backup >>"${LOG_FILE}" 2>&1
+      else
+        mbsync -c "${mbsync_config}" backup 2>&1 | tee -a "${LOG_FILE}"
+      fi
+
+      rm -f "${mbsync_config}"
+      log_line "warte 30 sec"
+      sleep 30
+      ;;
+    *)
+      echo "Unbekannte MAIL_BACKUP_STRATEGY: ${MAIL_BACKUP_STRATEGY}" >&2
+      return 1
+      ;;
+  esac
 }
 
 function load_config {

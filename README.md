@@ -5,6 +5,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 ## Voraussetzungen
 - SSH-Schlüssel unter `/root/.ssh/id_rsa` mit Zugriff auf den Zielserver (`${HOST}` im Skript).
 - Installierte Werkzeuge: `bash`, `rsync`, `ssh`, `mysqldump`, `python3` (für die API-Auswertung) und `imapsync` für E-Mail-Backups.
+- Für Maildir-Zielbackups zusätzlich `mbsync` (aus dem `isync`-Paket).
 - Schreibrechte auf dem Ziel-Backup-Pfad (Standard: `/srv/backup`).
 
 ## Konfiguration
@@ -22,6 +23,10 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `IMAP_TARGET_USER_PREFIX` / `IMAP_TARGET_USER_SUFFIX` (optional, um Ziel-Logins zu formen)
 - `IMAP_TARGET_PASSWORD` (optional, fällt sonst auf das Quell-Passwort zurück)
 - `IMAP_TARGET_SSL_FLAGS` (Standard: `--ssl2`)
+- `MAIL_BACKUP_STRATEGY` (Standard: `imapsync`; alternativ `maildir` für ein lokales Maildir-Ziel unter `${BACKUP_PATH}/mail/<adresse>` via `mbsync`)
+- `MAILDIR_SSL_TYPE` (Standard: `IMAPS`, SSL-Vorgabe für `mbsync` beim Maildir-Backup)
+
+Mit `MAIL_BACKUP_STRATEGY=maildir` landen alle Postfächer als Maildir unter `${BACKUP_PATH}/mail/<adresse>`. Das funktioniert ohne zweiten IMAP-Server und nutzt `mbsync`, um Ordnerstruktur und Nachrichten inkrementell zu spiegeln.
 
 ### KAS-API-gesteuerte Sicherung
 Aktivieren Sie `ENABLE_KAS_API_BACKUP=1`, setzen Sie `KAS_LOGIN` und `KAS_AUTH_DATA` und rufen Sie das Skript auf. Es
