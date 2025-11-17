@@ -44,5 +44,16 @@ IMAP_TARGET_HOST=backup.imap.local \
 
 Alle Backup-Aktionen werden an `${LOG_FILE}` angehängt. Das Skript legt die notwendigen Unterordner in `${BACKUP_PATH}` an und wartet zwischen den Schritten kurze Pausen ein, um Lastspitzen zu vermeiden.
 
+### Skriptoptionen
+- `-h, --help`: Zeigt eine kurze Übersicht der verfügbaren Optionen.
+- `-q, --quiet`: Unterdrückt Ausgaben auf STDOUT und schreibt ausschließlich ins Logfile.
+- `--cron`: Aktiviert einen stillen Modus für Cron-Jobs (setzt automatisch `--quiet`).
+
+Beispiel für den Aufruf im Cron-Modus:
+
+```bash
+CRON_MODE=1 ./backup_kas.sh --cron
+```
+
 ## Haftungsausschluss
 Die Beispielkonfiguration enthält Platzhalter-Zugangsdaten. Ersetzen Sie diese durch Ihre produktiven Werte und bewahren Sie sensible Informationen sicher auf.

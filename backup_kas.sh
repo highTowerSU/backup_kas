@@ -2,6 +2,47 @@
 
 set -euo pipefail
 
+# Standardoptionen
+QUIET=0
+CRON_MODE=0
+
+function usage {
+  cat <<'EOF'
+Verwendung: backup_kas.sh [OPTIONEN]
+
+Optionen:
+  -h, --help     Zeigt diese Hilfe an und beendet sich.
+  -q, --quiet    Unterdrückt Ausgabe auf STDOUT und schreibt nur ins Log.
+      --cron     Aktiviert einen stillen Modus für Cron-Jobs (setzt --quiet).
+EOF
+}
+
+function parse_args {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      -q|--quiet)
+        QUIET=1
+        ;;
+      --cron)
+        CRON_MODE=1
+        QUIET=1
+        ;;
+      *)
+        echo "Unbekannte Option: $1" >&2
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+  done
+}
+
+parse_args "$@"
+
 # Konfigurationsvariablen
 BACKUP_PATH=${BACKUP_PATH:-"/srv/backup"}
 HOST=${HOST:-"w018d9ee.kasserver.com"}
@@ -23,10 +64,19 @@ IMAP_TARGET_USER_SUFFIX=${IMAP_TARGET_USER_SUFFIX:-""}
 IMAP_TARGET_PASSWORD=${IMAP_TARGET_PASSWORD:-""}
 IMAP_TARGET_SSL_FLAGS=${IMAP_TARGET_SSL_FLAGS:---ssl2}
 
+function log_line {
+  local message=$1
+  if [ "$QUIET" -eq 1 ]; then
+    echo -e "$message" >>"${LOG_FILE}"
+  else
+    echo -e "$message" | tee -a "${LOG_FILE}"
+  fi
+}
+
 export date=$(date "+%Y-%m-%d")
 
 function mkdir_cd {
-  echo -e "#####################################################################\n# mkdir_cd $1 \n###############################################################"
+  log_line "#####################################################################\n# mkdir_cd $1 \n###############################################################"
   if [ ! -d "${BACKUP_PATH}/$1" ]; then
     mkdir -p "${BACKUP_PATH}/$1"
   fi
@@ -34,22 +84,31 @@ function mkdir_cd {
 }
 
 function database_backup {
-  echo "Database ${3}"
+  log_line "Database ${3}"
   mkdir_cd db
 
   backupfile="${1}-${2}-${3}.sql"
-  echo ssh -i "/root/.ssh/id_rsa" -o StrictHostKeyChecking=no "${1}@${HOST}" mysqldump "-u${2}" "-p${4}" "${3}" \>"${backupfile}"
+  log_line "ssh -i \"/root/.ssh/id_rsa\" -o StrictHostKeyChecking=no \"${1}@${HOST}\" mysqldump \"-u${2}\" \"-p${4}\" \"${3}\" >\"${backupfile}\""
   ssh -i "/root/.ssh/id_rsa" -o StrictHostKeyChecking=no "${1}@${HOST}" mysqldump "-u${2}" "-p${4}" "${3}" >"${backupfile}" 2>>"${LOG_FILE}"
-  ls -la "${backupfile}"
-  tail -n 1 "${backupfile}"
-  echo "warte 60 sec"
+  if [ "$QUIET" -eq 1 ]; then
+    ls -la "${backupfile}" >>"${LOG_FILE}"
+    tail -n 1 "${backupfile}" >>"${LOG_FILE}"
+  else
+    ls -la "${backupfile}"
+    tail -n 1 "${backupfile}"
+  fi
+  log_line "warte 60 sec"
   sleep 60
 }
 
 function mirror {
-  echo -e "#####################################################################\n# mirror $1 \n###############################################################"
-  rsync -av --delete -e "ssh -i /root/.ssh/id_rsa  -o StrictHostKeyChecking=no" "ssh-$1@${HOST}:/www/htdocs/${2}" . 2>&1 | tee -a "${LOG_FILE}"
-  echo "warte 60 sec"
+  log_line "#####################################################################\n# mirror $1 \n###############################################################"
+  if [ "$QUIET" -eq 1 ]; then
+    rsync -av --delete -e "ssh -i /root/.ssh/id_rsa  -o StrictHostKeyChecking=no" "ssh-$1@${HOST}:/www/htdocs/${2}" . >>"${LOG_FILE}" 2>&1
+  else
+    rsync -av --delete -e "ssh -i /root/.ssh/id_rsa  -o StrictHostKeyChecking=no" "ssh-$1@${HOST}:/www/htdocs/${2}" . 2>&1 | tee -a "${LOG_FILE}"
+  fi
+  log_line "warte 60 sec"
   sleep 60
 }
 
@@ -73,12 +132,12 @@ function mail_backup {
   local target_password="${IMAP_TARGET_PASSWORD:-${password}}"
   local logfile="${BACKUP_PATH}/mail/${address}.log"
 
-  echo -e "#####################################################################\n# imapsync ${address} \n###############################################################" | tee -a "${LOG_FILE}"
+  log_line "#####################################################################\n# imapsync ${address} \n###############################################################"
   imapsync \
     --host1 "${IMAP_SOURCE_HOST}" --user1 "${address}" --password1 "${password}" --ssl1 \
     --host2 "${IMAP_TARGET_HOST}" --user2 "${target_user}" --password2 "${target_password}" ${IMAP_TARGET_SSL_FLAGS} \
     --usecache --nofoldersizes --tmpdir /tmp --logfile "${logfile}" 2>>"${LOG_FILE}"
-  echo "warte 30 sec"
+  log_line "warte 30 sec"
   sleep 30
 }
 
@@ -153,7 +212,7 @@ function kas_api_backup() {
     exit 1
   fi
 
-  echo -e "#####################################################################\n# KAS API Backup \n###############################################################" | tee -a "${LOG_FILE}"
+  log_line "#####################################################################\n# KAS API Backup \n###############################################################"
 
   ftp_json=$(kas_api_request get_accounts "type=ftp")
   db_json=$(kas_api_request get_databases)
@@ -193,13 +252,13 @@ function kas_api_backup() {
   mapfile -t mail_passwords < <(echo "${mail_json}" | parse_json - "mail_password")
   mapfile -t mail_addresses < <(echo "${mail_json}" | parse_json - "mail_email")
 
-  if [ "${#mail_logins[@]}" -eq 0 ]; then
-    echo "Keine Mailkonten in der API-Antwort gefunden." | tee -a "${LOG_FILE}"
-  fi
-
   if [ "${#mail_logins[@]}" -ne "${#mail_passwords[@]}" ] || [ "${#mail_logins[@]}" -ne "${#mail_addresses[@]}" ]; then
     echo "Mailkonto-Antwort ist unvollständig. Prüfen Sie die API-Antwort." >&2
     exit 1
+  fi
+
+  if [ "${#mail_logins[@]}" -eq 0 ]; then
+    log_line "Keine Mailkonten in der API-Antwort gefunden."
   fi
 
   for i in "${!mail_logins[@]}"; do
@@ -209,7 +268,11 @@ function kas_api_backup() {
   done
 }
 
-echo -e ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n$(date)\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::" >>"${LOG_FILE}"
+log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n$(date)\n:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
+
+if [ "$CRON_MODE" -eq 1 ]; then
+  log_line "Cron-Modus aktiv: Ausgabe erfolgt ausschließlich im Log (${LOG_FILE})."
+fi
 
 mkdir_cd kas/
 mkdir_cd db/
