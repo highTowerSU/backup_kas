@@ -5,6 +5,7 @@ set -euo pipefail
 # Standardoptionen
 QUIET=0
 CRON_MODE=0
+ONBOARDING=0
 
 function usage {
   cat <<'EOF'
@@ -14,6 +15,9 @@ Optionen:
   -h, --help     Zeigt diese Hilfe an und beendet sich.
   -q, --quiet    Unterdrückt Ausgabe auf STDOUT und schreibt nur ins Log.
       --cron     Aktiviert einen stillen Modus für Cron-Jobs (setzt --quiet).
+      --onboarding
+                 Startet einen geführten Einrichtungsprozess und schreibt die
+                 Konfiguration in die lokale Datei etc/backup_kas.conf.
 EOF
 }
 
@@ -30,6 +34,9 @@ function parse_args {
       --cron)
         CRON_MODE=1
         QUIET=1
+        ;;
+      --onboarding)
+        ONBOARDING=1
         ;;
       *)
         echo "Unbekannte Option: $1" >&2
@@ -101,6 +108,23 @@ function prompt_for_value {
   export "${var_name}"
 }
 
+prompt_with_default() {
+  local var_name=$1
+  local prompt=$2
+  local current_value=${!var_name-}
+  local input
+
+  if [ ! -t 0 ]; then
+    return
+  fi
+
+  read -r -p "${prompt} [${current_value}]: " input
+  if [ -n "${input}" ]; then
+    printf -v "${var_name}" '%s' "${input}"
+    export "${var_name}"
+  fi
+}
+
 function log_line {
   local message=$1
   if [ "$QUIET" -eq 1 ]; then
@@ -111,6 +135,102 @@ function log_line {
 }
 
 export date=$(date "+%Y-%m-%d")
+
+config_has_payload() {
+  local file=$1
+  if [ ! -f "${file}" ]; then
+    return 1
+  fi
+
+  if grep -qEv '^\s*(#|$)' "${file}"; then
+    return 0
+  fi
+
+  return 1
+}
+
+onboarding() {
+  if [ ! -t 0 ]; then
+    echo "Onboarding erfordert ein interaktives Terminal. Führe das Skript ohne Cron oder mit angeschlossenem TTY aus." >&2
+    exit 1
+  fi
+
+  echo "Starte geführtes Onboarding. Bestehende Werte können mit Enter übernommen werden."
+
+  prompt_with_default "BACKUP_PATH" "BACKUP_PATH (Backup-Zielpfad)"
+  prompt_with_default "HOST" "HOST (Quellserver für SSH/rsync)"
+  prompt_with_default "LOG_FILE" "LOG_FILE (Pfad für Logs)"
+  prompt_with_default "MAIL_BACKUP_STRATEGY" "MAIL_BACKUP_STRATEGY (imapsync/maildir)"
+  prompt_with_default "IMAP_SOURCE_HOST" "IMAP_SOURCE_HOST (Quell-IMAP)"
+  prompt_with_default "IMAP_TARGET_HOST" "IMAP_TARGET_HOST (Ziel-IMAP, für Mail-Backups)"
+  prompt_with_default "IMAP_TARGET_USER_PREFIX" "IMAP_TARGET_USER_PREFIX"
+  prompt_with_default "IMAP_TARGET_USER_SUFFIX" "IMAP_TARGET_USER_SUFFIX"
+  prompt_with_default "IMAP_TARGET_SSL_FLAGS" "IMAP_TARGET_SSL_FLAGS"
+  prompt_with_default "MAILDIR_SSL_TYPE" "MAILDIR_SSL_TYPE"
+
+  local enable_api_answer
+  read -r -p "KAS API Backups aktivieren? (y/N) [${ENABLE_KAS_API_BACKUP}]: " enable_api_answer
+  case "${enable_api_answer}" in
+    y|Y|yes|YES)
+      ENABLE_KAS_API_BACKUP=1
+      ;;
+    n|N|no|NO|'')
+      ENABLE_KAS_API_BACKUP=0
+      ;;
+  esac
+
+  if [ "${ENABLE_KAS_API_BACKUP}" -eq 1 ]; then
+    ensure_kas_api_credentials
+  fi
+
+  if [ -z "${IMAP_TARGET_HOST-}" ] && [ "${MAIL_BACKUP_STRATEGY}" = "imapsync" ]; then
+    prompt_for_value "IMAP_TARGET_HOST" "IMAP_TARGET_HOST (Ziel-IMAP für imapsync)"
+  fi
+
+  mkdir -p "$(dirname "${LOCAL_CONFIG_FILE}")"
+  cat >"${LOCAL_CONFIG_FILE}" <<EOF
+# Autogenerierte Konfiguration vom ${date}
+BACKUP_PATH="${BACKUP_PATH}"
+HOST="${HOST}"
+LOG_FILE="${LOG_FILE}"
+ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP}
+MAIL_BACKUP_STRATEGY="${MAIL_BACKUP_STRATEGY}"
+IMAP_SOURCE_HOST="${IMAP_SOURCE_HOST}"
+IMAP_TARGET_HOST="${IMAP_TARGET_HOST}"
+IMAP_TARGET_USER_PREFIX="${IMAP_TARGET_USER_PREFIX}"
+IMAP_TARGET_USER_SUFFIX="${IMAP_TARGET_USER_SUFFIX}"
+IMAP_TARGET_PASSWORD="${IMAP_TARGET_PASSWORD-}"
+IMAP_TARGET_SSL_FLAGS="${IMAP_TARGET_SSL_FLAGS}"
+MAILDIR_SSL_TYPE="${MAILDIR_SSL_TYPE}"
+KAS_API_ENDPOINT="${KAS_API_ENDPOINT}"
+KAS_LOGIN="${KAS_LOGIN}"
+KAS_AUTH_DATA="${KAS_AUTH_DATA}"
+KAS_AUTH_TYPE="${KAS_AUTH_TYPE}"
+EOF
+
+  echo "Konfiguration wurde unter ${LOCAL_CONFIG_FILE} gespeichert."
+}
+
+maybe_run_onboarding() {
+  local has_config=0
+  if config_has_payload "${CONFIG_FILE}" || config_has_payload "${LOCAL_CONFIG_FILE}"; then
+    has_config=1
+  fi
+
+  if [ "${ONBOARDING}" -eq 1 ]; then
+    onboarding
+    return
+  fi
+
+  if [ "${has_config}" -eq 0 ] && [ -t 0 ]; then
+    onboarding
+    return
+  fi
+
+  if [ "${has_config}" -eq 0 ]; then
+    echo "Keine Konfiguration gefunden und kein TTY verfügbar. Starte ohne statische Jobs." >&2
+  fi
+}
 
 function mkdir_cd {
   log_line "#####################################################################\n# mkdir_cd $1 \n###############################################################"
@@ -372,6 +492,7 @@ function kas_api_backup() {
   done
 }
 
+maybe_run_onboarding
 load_config "${CONFIG_FILE}" "${LOCAL_CONFIG_FILE}"
 
 log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
