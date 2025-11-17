@@ -40,6 +40,9 @@ Aktivieren Sie `ENABLE_KAS_API_BACKUP=1`, setzen Sie `KAS_LOGIN` und `KAS_AUTH_D
 - Die Datei kann sowohl Funktionsaufrufe (z. B. `mirror ...`) als auch Variablen enthalten. Fehlende Pflichtwerte wie `KAS_LOGIN`/`KAS_AUTH_DATA` oder `IMAP_TARGET_HOST` werden bei interaktiven Aufrufen abgefragt.
 - Beispiele für `mirror`- und `database_backup`-Aufrufe sowie konfigurierbare Variablen finden Sie in `etc/backup_kas.conf`.
 
+### Geführtes Onboarding
+Rufen Sie `./backup_kas.sh --onboarding` auf, um interaktiv die wichtigsten Variablen (z. B. `BACKUP_PATH`, `HOST`, `LOG_FILE`, IMAP-Zielwerte sowie API-Zugangsdaten) abzufragen und in `etc/backup_kas.conf` zu speichern. Läuft das Skript interaktiv ohne vorhandene Konfiguration, startet das Onboarding automatisch.
+
 ## Backups ausführen
 ```bash
 ENABLE_KAS_API_BACKUP=1 \
