@@ -44,9 +44,12 @@ function parse_args {
 parse_args "$@"
 
 # Konfigurationsvariablen
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+DEFAULT_CONFIG_FILE="/etc/backup_kas.conf"
 BACKUP_PATH=${BACKUP_PATH:-"/srv/backup"}
 HOST=${HOST:-"w018d9ee.kasserver.com"}
-CONFIG_FILE=${KAS_CONFIG_FILE:-"/etc/backup_kas.conf"}
+CONFIG_FILE=${KAS_CONFIG_FILE:-"${DEFAULT_CONFIG_FILE}"}
+LOCAL_CONFIG_FILE="${SCRIPT_DIR}/etc/backup_kas.conf"
 LOG_FILE=${LOG_FILE:-"/var/log/kas-backup.log"}
 ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP:-0}
 
@@ -232,12 +235,22 @@ EOF
 
 function load_config {
   local config_path=$1
+  local fallback_path=$2
+
   if [ -f "${config_path}" ]; then
     # shellcheck source=/dev/null
     . "${config_path}"
-  else
-    echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, statische Aufträge werden übersprungen." >&2
+    return
   fi
+
+  if [ -z "${KAS_CONFIG_FILE-}" ] && [ -f "${fallback_path}" ]; then
+    echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, verwende ${fallback_path}." >&2
+    # shellcheck source=/dev/null
+    . "${fallback_path}"
+    return
+  fi
+
+  echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, statische Aufträge werden übersprungen." >&2
 }
 
 function ensure_kas_api_credentials {
@@ -359,7 +372,7 @@ function kas_api_backup() {
   done
 }
 
-load_config "${CONFIG_FILE}"
+load_config "${CONFIG_FILE}" "${LOCAL_CONFIG_FILE}"
 
 log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 $(date)

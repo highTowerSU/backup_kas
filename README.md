@@ -36,6 +36,7 @@ Aktivieren Sie `ENABLE_KAS_API_BACKUP=1`, setzen Sie `KAS_LOGIN` und `KAS_AUTH_D
 
 ### Statische Konfiguration
 - Hinterlegen Sie zusätzliche Sicherungen in `/etc/backup_kas.conf` oder einer eigenen Datei und setzen Sie `KAS_CONFIG_FILE` entsprechend.
+- Falls keine System-Konfiguration existiert, nutzt das Skript automatisch die mitgelieferte Datei `etc/backup_kas.conf` im Skriptverzeichnis, sofern `KAS_CONFIG_FILE` nicht gesetzt ist.
 - Die Datei kann sowohl Funktionsaufrufe (z. B. `mirror ...`) als auch Variablen enthalten. Fehlende Pflichtwerte wie `KAS_LOGIN`/`KAS_AUTH_DATA` oder `IMAP_TARGET_HOST` werden bei interaktiven Aufrufen abgefragt.
 - Beispiele für `mirror`- und `database_backup`-Aufrufe sowie konfigurierbare Variablen finden Sie in `etc/backup_kas.conf`.
 
