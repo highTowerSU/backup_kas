@@ -6,6 +6,7 @@ set -euo pipefail
 QUIET=0
 CRON_MODE=0
 ONBOARDING=0
+DEBUG=${DEBUG:-0}
 
 function usage {
   cat <<'EOF'
@@ -14,6 +15,7 @@ Verwendung: backup_kas.sh [OPTIONEN]
 Optionen:
   -h, --help     Zeigt diese Hilfe an und beendet sich.
   -q, --quiet    Unterdrückt Ausgabe auf STDOUT und schreibt nur ins Log.
+  -d, --debug    Aktiviert ausführliche Debug-Ausgaben.
       --cron     Aktiviert einen stillen Modus für Cron-Jobs (setzt --quiet).
       --onboarding
                  Startet einen geführten Einrichtungsprozess und schreibt die
@@ -30,6 +32,10 @@ function parse_args {
         ;;
       -q|--quiet)
         QUIET=1
+        ;;
+      -d|--debug)
+        DEBUG=1
+        QUIET=0
         ;;
       --cron)
         CRON_MODE=1
@@ -134,6 +140,20 @@ function log_line {
     echo -e "$message" | tee -a "${LOG_FILE}"
   fi
 }
+
+debug_log() {
+  if [ "${DEBUG}" -eq 1 ]; then
+    log_line "DEBUG: $*"
+  fi
+}
+
+if [ "${DEBUG}" -eq 1 ] && [ "${QUIET}" -eq 1 ]; then
+  QUIET=0
+fi
+
+if [ "${DEBUG}" -eq 1 ]; then
+  log_line "Debug-Modus aktiviert: Ausführliche Aufrufe und Antworten werden protokolliert."
+fi
 
 export date=$(date "+%Y-%m-%d")
 
@@ -364,6 +384,7 @@ function load_config {
   local config_path=$1
 
   if [ -f "${config_path}" ]; then
+    debug_log "Lade Konfiguration aus ${config_path}"
     # shellcheck source=/dev/null
     . "${config_path}"
     return
@@ -437,15 +458,23 @@ function kas_api_request() {
   refresh_kas_otp_from_secret
 
   local data=("-d" "kas_login=${KAS_LOGIN}" "-d" "kas_auth_type=${KAS_AUTH_TYPE}" "-d" "kas_auth_data=${KAS_AUTH_DATA}" "-d" "kas_action=${action}")
+  local debug_params=("kas_login=${KAS_LOGIN}" "kas_auth_type=${KAS_AUTH_TYPE}" "kas_auth_data=<hidden>" "kas_action=${action}")
 
   if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ -n "${KAS_AUTH_OTP}" ]; then
     data+=("-d" "kas_auth_otp=${KAS_AUTH_OTP}")
+    debug_params+=("kas_auth_otp=<hidden>")
   fi
 
   for param in "$@"; do
     data+=("-d" "kas_params[${param%%=*}]=${param#*=}")
+    debug_params+=("kas_params[${param%%=*}]=${param#*=}")
   done
-  curl -sS "${KAS_API_ENDPOINT}" "${data[@]}"
+  debug_log "KAS API Request: ${KAS_API_ENDPOINT} $(printf '%s ' "${debug_params[@]}")"
+
+  local response
+  response=$(curl -sS "${KAS_API_ENDPOINT}" "${data[@]}")
+  debug_log "KAS API Response (${action}): ${response}"
+  echo "${response}"
 }
 
 function parse_json() {
