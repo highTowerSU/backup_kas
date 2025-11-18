@@ -16,6 +16,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `KAS_CONFIG_FILE` (Standard: `/etc/backup_kas.conf`), zusätzliche statische Aufträge
 - `ENABLE_KAS_API_BACKUP` (Standard: `0`)
 - `KAS_LOGIN` / `KAS_AUTH_DATA` / `KAS_AUTH_TYPE` / `KAS_API_ENDPOINT` für API-Backups
+- `KAS_PASSWORD` (optional, um für `KAS_AUTH_TYPE=session` automatisch eine frische Session via Weblogin zu holen)
 
 ### IMAP-Backup-Ziele
 - `IMAP_SOURCE_HOST` (Standard: `imap.kasserver.com`, bei KAS-API-Backups wird der per API gelieferte Server pro Postfach bevorzugt)
@@ -26,7 +27,9 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `MAIL_BACKUP_STRATEGY` (Standard: `imapsync`; alternativ `maildir` für ein lokales Maildir-Ziel unter `${BACKUP_PATH}/mail/<adresse>` via `mbsync`)
 - `MAILDIR_SSL_TYPE` (Standard: `IMAPS`, SSL-Vorgabe für `mbsync` beim Maildir-Backup)
 
-Für Konten mit Zwei-Faktor-Authentifizierung setzen Sie `KAS_AUTH_TYPE=otp`. Legen Sie den Base32-TOTP-Seed optional in `KAS_AUTH_TOTP_SECRET` (z. B. in `/etc/backup_kas.conf`) ab; das Skript generiert daraus bei jedem Aufruf automatisch einen gültigen Code. Ohne hinterlegtes Secret fragt das Skript interaktiv nach dem aktuellen Einmal-Code oder nutzt einen per `KAS_AUTH_OTP` gesetzten Wert.
+Für Konten mit Zwei-Faktor-Authentifizierung setzen Sie `KAS_AUTH_TYPE=otp`. Legen Sie den Base32-TOTP-Seed optional in `KAS_AUTH_TOTP_SECRET` (z. B. in `/etc/backup_kas.conf`) ab; das Skript generiert daraus bei jedem Aufruf automatisch einen gültigen Code. Ohne hinterlegtes Secret fragt das Skript interaktiv nach dem aktuellen Einmal-Code oder nutzt einen per `KAS_AUTH_OTP` gesetzten Wert. Die Einrichtung erfolgt im KAS unter „KAS-Passwort → bearbeiten“ über den QR-Code für OTP-Authenticator-Apps.
+
+All-Inkl verlangt bei aktivierter 2FA inzwischen eine gültige Session für API-Aufrufe. In diesem Fall setzen Sie `KAS_AUTH_TYPE=session`. Das Skript kann die Session-ID automatisch beschaffen, wenn Sie zusätzlich `KAS_PASSWORD` (Web-Login-Passwort) hinterlegen; optional können Sie wie oben beschrieben `KAS_AUTH_TOTP_SECRET` oder `KAS_AUTH_OTP` für den zweiten Faktor setzen. Andernfalls können Sie die Session-ID weiterhin manuell in `KAS_AUTH_DATA` eintragen (Cookie `kas_session`/`PHPSESSID` nach Login auf https://kas.all-inkl.com). Erneuern Sie den Wert, sobald die Session abläuft.
 
 Mit `MAIL_BACKUP_STRATEGY=maildir` landen alle Postfächer als Maildir unter `${BACKUP_PATH}/mail/<adresse>`. Das funktioniert ohne zweiten IMAP-Server und nutzt `mbsync`, um Ordnerstruktur und Nachrichten inkrementell zu spiegeln.
 

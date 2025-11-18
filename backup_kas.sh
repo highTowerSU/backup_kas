@@ -67,7 +67,9 @@ ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP:-0}
 
 # KAS API-Zugänge
 KAS_API_ENDPOINT=${KAS_API_ENDPOINT:-"https://kasapi.kasserver.com/soap/v2.0/"}
+KAS_SESSION_LOGIN_URL=${KAS_SESSION_LOGIN_URL:-"https://kas.all-inkl.com/"}
 KAS_LOGIN=${KAS_LOGIN:-""}
+KAS_PASSWORD=${KAS_PASSWORD:-""}
 KAS_AUTH_DATA=${KAS_AUTH_DATA:-""}
 KAS_AUTH_TYPE=${KAS_AUTH_TYPE:-"plain"}
 KAS_AUTH_OTP=${KAS_AUTH_OTP:-""}
@@ -229,6 +231,7 @@ IMAP_TARGET_SSL_FLAGS="${IMAP_TARGET_SSL_FLAGS}"
 MAILDIR_SSL_TYPE="${MAILDIR_SSL_TYPE}"
 KAS_API_ENDPOINT="${KAS_API_ENDPOINT}"
 KAS_LOGIN="${KAS_LOGIN}"
+KAS_PASSWORD="${KAS_PASSWORD-}"
 KAS_AUTH_DATA="${KAS_AUTH_DATA}"
 KAS_AUTH_TYPE="${KAS_AUTH_TYPE}"
 KAS_AUTH_TOTP_SECRET="${KAS_AUTH_TOTP_SECRET}"
@@ -424,7 +427,7 @@ PY
 }
 
 refresh_kas_otp_from_secret() {
-  if [ "${KAS_AUTH_TYPE}" != "otp" ]; then
+  if [ "${KAS_AUTH_TYPE}" != "otp" ] && [ "${KAS_AUTH_TYPE}" != "session" ]; then
     return 0
   fi
 
@@ -437,16 +440,80 @@ refresh_kas_otp_from_secret() {
   return 0
 }
 
+resolve_session_cookie() {
+  local cookie_file=$1
+  local session_id=""
+
+  for name in kas_session PHPSESSID; do
+    if grep -qE "\\s${name}\\s" "${cookie_file}"; then
+      session_id=$(awk -v n="${name}" '$6==n {print $7}' "${cookie_file}" | tail -n 1)
+      if [ -n "${session_id}" ]; then
+        echo "${session_id}"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+perform_session_login() {
+  if [ "${KAS_AUTH_TYPE}" != "session" ] || [ -n "${KAS_AUTH_DATA}" ]; then
+    return 0
+  fi
+
+  prompt_for_value "KAS_PASSWORD" "KAS_PASSWORD (Passwort für das KAS-Weblogin)" 1
+  refresh_kas_otp_from_secret
+  if [ -z "${KAS_AUTH_OTP}" ] && [ -t 0 ]; then
+    prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code, falls erforderlich)" 0 1
+  fi
+
+  local cookie_jar
+  cookie_jar=$(mktemp)
+  local post_fields=(
+    "-d" "kas_action=login"
+    "-d" "kas_login=${KAS_LOGIN}"
+    "-d" "kas_password=${KAS_PASSWORD}"
+  )
+
+  if [ -n "${KAS_AUTH_OTP}" ]; then
+    post_fields+=("-d" "kas_auth_otp=${KAS_AUTH_OTP}")
+  fi
+
+  debug_log "Starte Session-Login gegen ${KAS_SESSION_LOGIN_URL} (Form POST)."
+  if ! curl -sSL -c "${cookie_jar}" -o /dev/null "${KAS_SESSION_LOGIN_URL}" "${post_fields[@]}"; then
+    echo "Fehler: Session-Login fehlgeschlagen." >&2
+    rm -f "${cookie_jar}"
+    exit 1
+  fi
+
+  local session_id
+  session_id=$(resolve_session_cookie "${cookie_jar}" || true)
+  rm -f "${cookie_jar}"
+
+  if [ -z "${session_id}" ]; then
+    echo "Fehler: Konnte keine Session-ID aus dem Login erhalten." >&2
+    exit 1
+  fi
+
+  KAS_AUTH_DATA="${session_id}"
+  export KAS_AUTH_DATA
+  debug_log "Session erfolgreich geholt, KAS_AUTH_DATA gesetzt."
+}
+
 function ensure_kas_api_credentials {
   local require_otp=${1:-1}
 
   prompt_for_value "KAS_LOGIN" "KAS_LOGIN (KAS-Benutzername)"
-  prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
-
-  if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ "${require_otp}" -eq 1 ]; then
-    refresh_kas_otp_from_secret
-    if [ -z "${KAS_AUTH_OTP}" ]; then
-      prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+  if [ "${KAS_AUTH_TYPE}" = "session" ]; then
+    perform_session_login
+  else
+    prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
+    if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ "${require_otp}" -eq 1 ]; then
+      refresh_kas_otp_from_secret
+      if [ -z "${KAS_AUTH_OTP}" ]; then
+        prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+      fi
     fi
   fi
 }
