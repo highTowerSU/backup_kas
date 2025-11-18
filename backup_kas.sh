@@ -562,8 +562,33 @@ function kas_api_request() {
   debug_log "KAS API Request: ${KAS_API_ENDPOINT} $(printf '%s ' "${debug_params[@]}")"
 
   local response
-  if ! response=$(curl -sS "${KAS_API_ENDPOINT}" "${data[@]}"); then
+  local http_code
+  local endpoint="${KAS_API_ENDPOINT}"
+
+  if ! http_code=$(curl -sS -w "%{http_code}" -o /tmp/kas_api_response.$$ "${endpoint}" "${data[@]}"); then
     echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
+    rm -f /tmp/kas_api_response.$$
+    return 1
+  fi
+
+  if [ "${http_code}" -eq 404 ] && [[ "${endpoint}" != *"index.php" ]]; then
+    local fallback_endpoint="${endpoint%/}/index.php"
+    debug_log "API antwortete mit 404, versuche erneut mit ${fallback_endpoint}."
+    endpoint="${fallback_endpoint}"
+    if ! http_code=$(curl -sS -w "%{http_code}" -o /tmp/kas_api_response.$$ "${endpoint}" "${data[@]}"); then
+      echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
+      rm -f /tmp/kas_api_response.$$
+      return 1
+    fi
+    KAS_API_ENDPOINT="${endpoint}"
+  fi
+
+  response=$(cat /tmp/kas_api_response.$$)
+  rm -f /tmp/kas_api_response.$$
+
+  if [ "${http_code}" -ge 400 ]; then
+    echo "Fehler: API-Aufruf für Aktion ${action} scheiterte mit HTTP ${http_code}. Prüfen Sie KAS_API_ENDPOINT und Zugangsdaten." >&2
+    debug_log "KAS API Error (${action}, HTTP ${http_code}): ${response}"
     return 1
   fi
 
@@ -571,6 +596,7 @@ function kas_api_request() {
     echo "Fehler: Leere Antwort von der KAS API für Aktion ${action}." >&2
     return 1
   fi
+
   debug_log "KAS API Response (${action}): ${response}"
   echo "${response}"
 }
