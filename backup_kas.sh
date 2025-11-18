@@ -6,7 +6,7 @@ set -euo pipefail
 QUIET=0
 CRON_MODE=0
 ONBOARDING=0
-DEBUG=${DEBUG:-0}
+DEBUG=0
 
 function usage {
   cat <<'EOF'
