@@ -26,6 +26,8 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `MAIL_BACKUP_STRATEGY` (Standard: `imapsync`; alternativ `maildir` für ein lokales Maildir-Ziel unter `${BACKUP_PATH}/mail/<adresse>` via `mbsync`)
 - `MAILDIR_SSL_TYPE` (Standard: `IMAPS`, SSL-Vorgabe für `mbsync` beim Maildir-Backup)
 
+Für Konten mit Zwei-Faktor-Authentifizierung setzen Sie `KAS_AUTH_TYPE=otp`. Das Skript fordert dann interaktiv den aktuellen Einmal-Code an oder liest ihn aus `KAS_AUTH_OTP`; der Code wird nicht in der Konfiguration gespeichert.
+
 Mit `MAIL_BACKUP_STRATEGY=maildir` landen alle Postfächer als Maildir unter `${BACKUP_PATH}/mail/<adresse>`. Das funktioniert ohne zweiten IMAP-Server und nutzt `mbsync`, um Ordnerstruktur und Nachrichten inkrementell zu spiegeln.
 
 ### KAS-API-gesteuerte Sicherung
