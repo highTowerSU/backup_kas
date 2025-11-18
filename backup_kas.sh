@@ -8,6 +8,12 @@ CRON_MODE=0
 ONBOARDING=0
 DEBUG=0
 
+# Merker für CLI-Overrides, damit Konfigurationswerte diese nicht überschreiben
+CLI_QUIET_SET=0
+CLI_CRON_SET=0
+CLI_ONBOARDING_SET=0
+CLI_DEBUG_SET=0
+
 function usage {
   cat <<'EOF'
 Verwendung: backup_kas.sh [OPTIONEN]
@@ -32,17 +38,21 @@ function parse_args {
         ;;
       -q|--quiet)
         QUIET=1
+        CLI_QUIET_SET=1
         ;;
       -d|--debug)
         DEBUG=1
         QUIET=0
+        CLI_DEBUG_SET=1
         ;;
       --cron)
         CRON_MODE=1
         QUIET=1
+        CLI_CRON_SET=1
         ;;
       --onboarding)
         ONBOARDING=1
+        CLI_ONBOARDING_SET=1
         ;;
       *)
         echo "Unbekannte Option: $1" >&2
@@ -55,6 +65,27 @@ function parse_args {
 }
 
 parse_args "$@"
+
+apply_cli_overrides() {
+  if [ "${CLI_DEBUG_SET}" -eq 1 ]; then
+    DEBUG=1
+  fi
+
+  if [ "${CLI_CRON_SET}" -eq 1 ]; then
+    CRON_MODE=1
+    QUIET=1
+  elif [ "${CLI_QUIET_SET}" -eq 1 ]; then
+    QUIET=1
+  fi
+
+  if [ "${CLI_ONBOARDING_SET}" -eq 1 ]; then
+    ONBOARDING=1
+  fi
+
+  if [ "${DEBUG}" -eq 1 ] && [ "${QUIET}" -eq 1 ]; then
+    QUIET=0
+  fi
+}
 
 # Konfigurationsvariablen
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -148,14 +179,6 @@ debug_log() {
     log_line "DEBUG: $*"
   fi
 }
-
-if [ "${DEBUG}" -eq 1 ] && [ "${QUIET}" -eq 1 ]; then
-  QUIET=0
-fi
-
-if [ "${DEBUG}" -eq 1 ]; then
-  log_line "Debug-Modus aktiviert: Ausführliche Aufrufe und Antworten werden protokolliert."
-fi
 
 export date=$(date "+%Y-%m-%d")
 
@@ -539,7 +562,15 @@ function kas_api_request() {
   debug_log "KAS API Request: ${KAS_API_ENDPOINT} $(printf '%s ' "${debug_params[@]}")"
 
   local response
-  response=$(curl -sS "${KAS_API_ENDPOINT}" "${data[@]}")
+  if ! response=$(curl -sS "${KAS_API_ENDPOINT}" "${data[@]}"); then
+    echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
+    return 1
+  fi
+
+  if [ -z "${response}" ]; then
+    echo "Fehler: Leere Antwort von der KAS API für Aktion ${action}." >&2
+    return 1
+  fi
   debug_log "KAS API Response (${action}): ${response}"
   echo "${response}"
 }
@@ -551,6 +582,11 @@ function parse_json() {
 import json, sys
 payload = sys.stdin.read()
 filter_expr = sys.argv[1]
+
+if not payload.strip():
+    sys.stderr.write("API-Antwort ist leer; keine JSON-Daten empfangen.\n")
+    sys.exit(1)
+
 try:
     data = json.loads(payload)
 except json.JSONDecodeError as exc:
@@ -662,9 +698,14 @@ function kas_api_backup() {
 maybe_run_onboarding
 load_config "${CONFIG_FILE}"
 
-log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-$(date)
-::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
+# CLI-Optionen sollen Vorrang vor Werten aus der Konfiguration haben
+apply_cli_overrides
+
+if [ "${DEBUG}" -eq 1 ]; then
+  log_line "Debug-Modus aktiviert: Ausführliche Aufrufe und Antworten werden protokolliert."
+fi
+
+  log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n$(date)\n::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"
 
 if [ "$CRON_MODE" -eq 1 ]; then
   log_line "Cron-Modus aktiv: Ausgabe erfolgt ausschließlich im Log (${LOG_FILE})."
