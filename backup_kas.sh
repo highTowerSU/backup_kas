@@ -456,9 +456,12 @@ refresh_kas_otp_from_secret() {
   fi
 
   if [ -n "${KAS_AUTH_TOTP_SECRET-}" ]; then
+    debug_log "Erzeuge TOTP-Code aus KAS_AUTH_TOTP_SECRET."
     if ! KAS_AUTH_OTP=$(generate_totp "${KAS_AUTH_TOTP_SECRET}"); then
       echo "Warnung: Konnte keinen TOTP-Code aus KAS_AUTH_TOTP_SECRET erzeugen." >&2
     fi
+  elif [ "${DEBUG}" -eq 1 ]; then
+    log_line "DEBUG: Kein KAS_AUTH_TOTP_SECRET gesetzt, überspringe automatische OTP-Generierung."
   fi
 
   return 0
@@ -502,6 +505,9 @@ perform_session_login() {
 
   if [ -n "${KAS_AUTH_OTP}" ]; then
     post_fields+=("-d" "kas_auth_otp=${KAS_AUTH_OTP}")
+    debug_log "Verwende bereitgestellten OTP-Code für Session-Login."
+  else
+    debug_log "Kein OTP-Code für Session-Login vorhanden (ggf. nicht benötigt)."
   fi
 
   debug_log "Starte Session-Login gegen ${KAS_SESSION_LOGIN_URL} (Form POST)."
@@ -522,21 +528,32 @@ perform_session_login() {
 
   KAS_AUTH_DATA="${session_id}"
   export KAS_AUTH_DATA
-  debug_log "Session erfolgreich geholt, KAS_AUTH_DATA gesetzt."
+  debug_log "Session erfolgreich geholt, KAS_AUTH_DATA aus Session-Cookie übernommen."
 }
 
 function ensure_kas_api_credentials {
   local require_otp=${1:-1}
+
+  debug_log "Prüfe KAS-API-Zugang (auth_type=${KAS_AUTH_TYPE:-<unset>}, login=${KAS_LOGIN:-<unset>})."
 
   prompt_for_value "KAS_LOGIN" "KAS_LOGIN (KAS-Benutzername)"
   if [ "${KAS_AUTH_TYPE}" = "session" ]; then
     perform_session_login
   else
     prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
+    if [ "${DEBUG}" -eq 1 ]; then
+      if [ -n "${KAS_AUTH_DATA}" ]; then
+        log_line "DEBUG: KAS_AUTH_DATA ist gesetzt (Inhalt wird nicht angezeigt)."
+      else
+        log_line "DEBUG: KAS_AUTH_DATA ist leer und wird interaktiv abgefragt."
+      fi
+    fi
     if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ "${require_otp}" -eq 1 ]; then
       refresh_kas_otp_from_secret
       if [ -z "${KAS_AUTH_OTP}" ]; then
         prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+      else
+        debug_log "OTP-Code aus Secret oder Eingabe übernommen."
       fi
     fi
   fi
