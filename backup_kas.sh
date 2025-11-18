@@ -64,6 +64,7 @@ KAS_API_ENDPOINT=${KAS_API_ENDPOINT:-"https://kasapi.kasserver.com/soap/v2.0/"}
 KAS_LOGIN=${KAS_LOGIN:-""}
 KAS_AUTH_DATA=${KAS_AUTH_DATA:-""}
 KAS_AUTH_TYPE=${KAS_AUTH_TYPE:-"plain"}
+KAS_AUTH_OTP=${KAS_AUTH_OTP:-""}
 
 # IMAP-Backup Einstellungen
 IMAP_SOURCE_HOST=${IMAP_SOURCE_HOST:-"imap.kasserver.com"}
@@ -179,7 +180,8 @@ onboarding() {
   esac
 
   if [ "${ENABLE_KAS_API_BACKUP}" -eq 1 ]; then
-    ensure_kas_api_credentials
+    prompt_with_default "KAS_AUTH_TYPE" "KAS_AUTH_TYPE (plain/otp/session)"
+    ensure_kas_api_credentials 0
   fi
 
   if [ -z "${IMAP_TARGET_HOST-}" ] && [ "${MAIL_BACKUP_STRATEGY}" = "imapsync" ]; then
@@ -366,14 +368,25 @@ function load_config {
 }
 
 function ensure_kas_api_credentials {
+  local require_otp=${1:-1}
+
   prompt_for_value "KAS_LOGIN" "KAS_LOGIN (KAS-Benutzername)"
   prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
+
+  if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ "${require_otp}" -eq 1 ]; then
+    prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+  fi
 }
 
 function kas_api_request() {
   local action=$1
   shift
   local data=("-d" "kas_login=${KAS_LOGIN}" "-d" "kas_auth_type=${KAS_AUTH_TYPE}" "-d" "kas_auth_data=${KAS_AUTH_DATA}" "-d" "kas_action=${action}")
+
+  if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ -n "${KAS_AUTH_OTP}" ]; then
+    data+=("-d" "kas_auth_otp=${KAS_AUTH_OTP}")
+  fi
+
   for param in "$@"; do
     data+=("-d" "kas_params[${param%%=*}]=${param#*=}")
   done
