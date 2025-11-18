@@ -98,7 +98,7 @@ ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP:-0}
 
 # KAS API-Zugänge
 KAS_API_ENDPOINT=${KAS_API_ENDPOINT:-"https://kasapi.kasserver.com/soap/v2.0/"}
-KAS_SOAP_WSDL=${KAS_SOAP_WSDL:-"https://kasapi.kasserver.com/soap/wsdl.php?wsdl"}
+KAS_SOAP_WSDL=${KAS_SOAP_WSDL:-"https://kasapi.kasserver.com/soap/wsdl/KasApi.wsdl"}
 KAS_SESSION_LOGIN_URL=${KAS_SESSION_LOGIN_URL:-"https://kas.all-inkl.com/"}
 KAS_LOGIN=${KAS_LOGIN:-""}
 KAS_PASSWORD=${KAS_PASSWORD:-""}
