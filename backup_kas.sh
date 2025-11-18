@@ -554,23 +554,30 @@ function kas_api_request() {
     return 1
   fi
 
-  local soap_args=("--wsdl" "${KAS_SOAP_WSDL}" "--endpoint" "${KAS_API_ENDPOINT}" "--action" "${action}" "--login" "${KAS_LOGIN}" "--auth-type" "${KAS_AUTH_TYPE}" "--auth-data" "${KAS_AUTH_DATA}")
+  local soap_args=(
+    "--wsdl=${KAS_SOAP_WSDL}"
+    "--endpoint=${KAS_API_ENDPOINT}"
+    "--action=${action}"
+    "--login=${KAS_LOGIN}"
+    "--auth-type=${KAS_AUTH_TYPE}"
+    "--auth-data=${KAS_AUTH_DATA}"
+  )
   local debug_params=("kas_login=${KAS_LOGIN}" "kas_auth_type=${KAS_AUTH_TYPE}" "kas_auth_data=<hidden>" "kas_action=${action}" "wsdl=${KAS_SOAP_WSDL}" "endpoint=${KAS_API_ENDPOINT}")
 
   if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ -n "${KAS_AUTH_OTP}" ]; then
-    soap_args+=("--otp" "${KAS_AUTH_OTP}")
+    soap_args+=("--otp=${KAS_AUTH_OTP}")
     debug_params+=("kas_auth_otp=<hidden>")
   fi
 
   for param in "$@"; do
-    soap_args+=("--param" "${param}")
+    soap_args+=("--param=${param}")
     debug_params+=("kas_params[${param%%=*}]=${param#*=}")
   done
 
   debug_log "KAS API Request (SOAP): $(printf '%s ' "${debug_params[@]}")"
 
   local response
-  if ! response=$(php "${php_script}" "${soap_args[@]}"); then
+  if ! response=$(php -f "${php_script}" -- "${soap_args[@]}"); then
     echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
     return 1
   fi
