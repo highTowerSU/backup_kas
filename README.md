@@ -4,7 +4,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 
 ## Voraussetzungen
 - SSH-Schlüssel unter `/root/.ssh/id_rsa` mit Zugriff auf den Zielserver (`${HOST}` im Skript).
-- Installierte Werkzeuge: `bash`, `rsync`, `ssh`, `mysqldump`, `python3` (für die API-Auswertung) und `imapsync` für E-Mail-Backups.
+- Installierte Werkzeuge: `bash`, `rsync`, `ssh`, `mysqldump`, `python3` (für die API-Auswertung), `php` mit aktivierter SOAP-Erweiterung sowie `imapsync` für E-Mail-Backups.
 - Für Maildir-Zielbackups zusätzlich `mbsync` (aus dem `isync`-Paket).
 - Schreibrechte auf dem Ziel-Backup-Pfad (Standard: `/srv/backup`).
 
@@ -18,6 +18,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `KAS_LOGIN` / `KAS_AUTH_DATA` / `KAS_AUTH_TYPE` / `KAS_API_ENDPOINT` für API-Backups (bei einer 404-Antwort versucht das Skript
   automatisch erneut mit `/index.php` am Endpunkt und fällt danach bei Bedarf auf einen Endpunkt ohne Versionspfad zurück)
 - `KAS_PASSWORD` (optional, um für `KAS_AUTH_TYPE=session` automatisch eine frische Session via Weblogin zu holen)
+- `KAS_SOAP_WSDL` (optional; Standard: `https://kasapi.kasserver.com/soap/wsdl.php?wsdl`)
 
 ### IMAP-Backup-Ziele
 - `IMAP_SOURCE_HOST` (Standard: `imap.kasserver.com`, bei KAS-API-Backups wird der per API gelieferte Server pro Postfach bevorzugt)
@@ -39,6 +40,8 @@ Aktivieren Sie `ENABLE_KAS_API_BACKUP=1`, setzen Sie `KAS_LOGIN` und `KAS_AUTH_D
 - spiegelt alle FTP-Accounts (inkl. Unteraccounts) mit `rsync`,
 - sichert alle Datenbanken via `mysqldump`,
 - spiegelt jedes Postfach via `imapsync` auf den konfigurierten IMAP-Zielserver.
+
+Die KAS-Aufrufe erfolgen über das SOAP-Hilfsskript `kas_api_soap.php`; das verwendete WSDL lässt sich bei Bedarf mit `KAS_SOAP_WSDL` umstellen.
 
 ### Statische Konfiguration
 - Hinterlegen Sie zusätzliche Sicherungen in `/etc/backup_kas.conf` oder einer eigenen Datei und setzen Sie `KAS_CONFIG_FILE` entsprechend.
