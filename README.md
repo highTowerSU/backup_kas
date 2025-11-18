@@ -16,7 +16,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `KAS_CONFIG_FILE` (Standard: `/etc/backup_kas.conf`), zusätzliche statische Aufträge
 - `ENABLE_KAS_API_BACKUP` (Standard: `0`)
 - `KAS_LOGIN` / `KAS_AUTH_DATA` / `KAS_AUTH_TYPE` / `KAS_API_ENDPOINT` für API-Backups (bei einer 404-Antwort versucht das Skript
-  automatisch erneut mit `/index.php` am Endpunkt)
+  automatisch erneut mit `/index.php` am Endpunkt und fällt danach bei Bedarf auf einen Endpunkt ohne Versionspfad zurück)
 - `KAS_PASSWORD` (optional, um für `KAS_AUTH_TYPE=session` automatisch eine frische Session via Weblogin zu holen)
 
 ### IMAP-Backup-Ziele

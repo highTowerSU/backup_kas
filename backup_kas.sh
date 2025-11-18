@@ -564,22 +564,34 @@ function kas_api_request() {
   local response
   local http_code
   local endpoint="${KAS_API_ENDPOINT}"
+  local attempted_fallback=0
 
-  if ! http_code=$(curl -sS -w "%{http_code}" -o /tmp/kas_api_response.$$ "${endpoint}" "${data[@]}"); then
-    echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
-    rm -f /tmp/kas_api_response.$$
-    return 1
-  fi
-
-  if [ "${http_code}" -eq 404 ] && [[ "${endpoint}" != *"index.php" ]]; then
-    local fallback_endpoint="${endpoint%/}/index.php"
-    debug_log "API antwortete mit 404, versuche erneut mit ${fallback_endpoint}."
-    endpoint="${fallback_endpoint}"
+  while :; do
     if ! http_code=$(curl -sS -w "%{http_code}" -o /tmp/kas_api_response.$$ "${endpoint}" "${data[@]}"); then
       echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
       rm -f /tmp/kas_api_response.$$
       return 1
     fi
+
+    if [ "${http_code}" -eq 404 ]; then
+      local next_endpoint=""
+      if [[ "${endpoint}" != *"index.php" ]]; then
+        next_endpoint="${endpoint%/}/index.php"
+      elif [[ "${endpoint}" == */v2.0/index.php ]]; then
+        next_endpoint="${endpoint%/v2.0/index.php}/index.php"
+      fi
+
+      if [ -n "${next_endpoint}" ] && [ "${next_endpoint}" != "${endpoint}" ]; then
+        debug_log "API antwortete mit 404, versuche erneut mit ${next_endpoint}."
+        endpoint="${next_endpoint}"
+        attempted_fallback=1
+        continue
+      fi
+    fi
+    break
+  done
+
+  if [ "${attempted_fallback}" -eq 1 ]; then
     KAS_API_ENDPOINT="${endpoint}"
   fi
 
