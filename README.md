@@ -59,6 +59,7 @@ Alle Backup-Aktionen werden an `${LOG_FILE}` angehängt. Das Skript legt die not
 ### Skriptoptionen
 - `-h, --help`: Zeigt eine kurze Übersicht der verfügbaren Optionen.
 - `-q, --quiet`: Unterdrückt Ausgaben auf STDOUT und schreibt ausschließlich ins Logfile.
+- `-d, --debug`: Aktiviert ausführliche Debug-Ausgaben (API-Aufrufe und Antworten werden mitgeschrieben).
 - `--cron`: Aktiviert einen stillen Modus für Cron-Jobs (setzt automatisch `--quiet`).
 
 Beispiel für den Aufruf im Cron-Modus:
