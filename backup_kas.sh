@@ -17,7 +17,7 @@ Optionen:
       --cron     Aktiviert einen stillen Modus für Cron-Jobs (setzt --quiet).
       --onboarding
                  Startet einen geführten Einrichtungsprozess und schreibt die
-                 Konfiguration in die lokale Datei etc/backup_kas.conf.
+                 Konfiguration nach /etc/backup_kas.conf.
 EOF
 }
 
@@ -56,7 +56,6 @@ DEFAULT_CONFIG_FILE="/etc/backup_kas.conf"
 BACKUP_PATH=${BACKUP_PATH:-"/srv/backup"}
 HOST=${HOST:-"w018d9ee.kasserver.com"}
 CONFIG_FILE=${KAS_CONFIG_FILE:-"${DEFAULT_CONFIG_FILE}"}
-LOCAL_CONFIG_FILE="${SCRIPT_DIR}/etc/backup_kas.conf"
 LOG_FILE=${LOG_FILE:-"/var/log/kas-backup.log"}
 ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP:-0}
 
@@ -187,8 +186,8 @@ onboarding() {
     prompt_for_value "IMAP_TARGET_HOST" "IMAP_TARGET_HOST (Ziel-IMAP für imapsync)"
   fi
 
-  mkdir -p "$(dirname "${LOCAL_CONFIG_FILE}")"
-  cat >"${LOCAL_CONFIG_FILE}" <<EOF
+  mkdir -p "$(dirname "${CONFIG_FILE}")"
+  cat >"${CONFIG_FILE}" <<EOF
 # Autogenerierte Konfiguration vom ${date}
 BACKUP_PATH="${BACKUP_PATH}"
 HOST="${HOST}"
@@ -208,12 +207,12 @@ KAS_AUTH_DATA="${KAS_AUTH_DATA}"
 KAS_AUTH_TYPE="${KAS_AUTH_TYPE}"
 EOF
 
-  echo "Konfiguration wurde unter ${LOCAL_CONFIG_FILE} gespeichert."
+  echo "Konfiguration wurde unter ${CONFIG_FILE} gespeichert."
 }
 
 maybe_run_onboarding() {
   local has_config=0
-  if config_has_payload "${CONFIG_FILE}" || config_has_payload "${LOCAL_CONFIG_FILE}"; then
+  if config_has_payload "${CONFIG_FILE}"; then
     has_config=1
   fi
 
@@ -355,7 +354,6 @@ EOF
 
 function load_config {
   local config_path=$1
-  local fallback_path=$2
 
   if [ -f "${config_path}" ]; then
     # shellcheck source=/dev/null
@@ -363,14 +361,7 @@ function load_config {
     return
   fi
 
-  if [ -z "${KAS_CONFIG_FILE-}" ] && [ -f "${fallback_path}" ]; then
-    echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, verwende ${fallback_path}." >&2
-    # shellcheck source=/dev/null
-    . "${fallback_path}"
-    return
-  fi
-
-  echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, statische Aufträge werden übersprungen." >&2
+  echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, statische Aufträge werden übersprungen. Kopieren Sie die Musterdatei aus ${SCRIPT_DIR}/etc/backup_kas.conf nach ${config_path} oder nutzen Sie --onboarding." >&2
 }
 
 function ensure_kas_api_credentials {
@@ -493,7 +484,7 @@ function kas_api_backup() {
 }
 
 maybe_run_onboarding
-load_config "${CONFIG_FILE}" "${LOCAL_CONFIG_FILE}"
+load_config "${CONFIG_FILE}"
 
 log_line ":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 $(date)
