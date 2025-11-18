@@ -18,7 +18,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `KAS_LOGIN` / `KAS_AUTH_DATA` / `KAS_AUTH_TYPE` / `KAS_API_ENDPOINT` für API-Backups (bei einer 404-Antwort versucht das Skript
   automatisch erneut mit `/index.php` am Endpunkt und fällt danach bei Bedarf auf einen Endpunkt ohne Versionspfad zurück)
 - `KAS_PASSWORD` (optional, um für `KAS_AUTH_TYPE=session` automatisch eine frische Session via Weblogin zu holen)
-- `KAS_SOAP_WSDL` (optional; Standard: `https://kasapi.kasserver.com/soap/wsdl.php?wsdl`)
+- `KAS_SOAP_WSDL` (optional; Standard: `https://kasapi.kasserver.com/soap/wsdl/KasApi.wsdl`, fällt bei Bedarf automatisch auf die Legacy-URL zurück)
 
 ### IMAP-Backup-Ziele
 - `IMAP_SOURCE_HOST` (Standard: `imap.kasserver.com`, bei KAS-API-Backups wird der per API gelieferte Server pro Postfach bevorzugt)

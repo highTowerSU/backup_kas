@@ -49,8 +49,32 @@ if (!empty($opts['endpoint'])) {
     $clientOptions['uri'] = 'urn:KasApi';
 }
 
+$buildWsdlFallbacks = static function (string $wsdl): array {
+    $candidates = [$wsdl];
+
+    if (preg_match('#^https?://kasapi\.kasserver\.com/soap/wsdl\.php\?wsdl$#i', $wsdl)) {
+        $candidates[] = 'https://kasapi.kasserver.com/soap/wsdl/KasApi.wsdl';
+    }
+
+    return array_values(array_unique($candidates));
+};
+
+$createSoapClient = static function (array $wsdls) use ($clientOptions): SoapClient {
+    $lastError = null;
+
+    foreach ($wsdls as $wsdl) {
+        try {
+            return new SoapClient($wsdl, $clientOptions);
+        } catch (Throwable $e) {
+            $lastError = $e;
+        }
+    }
+
+    throw $lastError ?? new RuntimeException('Konnte keinen gültigen WSDL-Endpunkt erreichen.');
+};
+
 try {
-    $client = new SoapClient($opts['wsdl'], $clientOptions);
+    $client = $createSoapClient($buildWsdlFallbacks($opts['wsdl']));
 } catch (Throwable $e) {
     fwrite(STDERR, 'Konnte SoapClient nicht initialisieren: ' . $e->getMessage() . PHP_EOL);
     exit(1);
