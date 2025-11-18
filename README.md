@@ -18,7 +18,7 @@ Dieses Repository enthält ein Skript, um Webspace-, MySQL- und IMAP-Postfach-Da
 - `KAS_LOGIN` / `KAS_AUTH_DATA` / `KAS_AUTH_TYPE` / `KAS_API_ENDPOINT` für API-Backups
 
 ### IMAP-Backup-Ziele
-- `IMAP_SOURCE_HOST` (Standard: `imap.kasserver.com`)
+- `IMAP_SOURCE_HOST` (Standard: `imap.kasserver.com`, bei KAS-API-Backups wird der per API gelieferte Server pro Postfach bevorzugt)
 - `IMAP_TARGET_HOST` (Pflicht für Mail-Backups)
 - `IMAP_TARGET_USER_PREFIX` / `IMAP_TARGET_USER_SUFFIX` (optional, um Ziel-Logins zu formen)
 - `IMAP_TARGET_PASSWORD` (optional, fällt sonst auf das Quell-Passwort zurück)

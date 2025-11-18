@@ -273,6 +273,7 @@ function mail_backup {
   local login=$1
   local password=$2
   local address=$3
+  local source_host=${4:-${IMAP_SOURCE_HOST}}
 
   case "${MAIL_BACKUP_STRATEGY}" in
     imapsync)
@@ -293,7 +294,7 @@ function mail_backup {
 
       log_line "#####################################################################\n# imapsync ${address} \n#######################################################"
       imapsync \
-        --host1 "${IMAP_SOURCE_HOST}" --user1 "${address}" --password1 "${password}" --ssl1 \
+        --host1 "${source_host}" --user1 "${address}" --password1 "${password}" --ssl1 \
         --host2 "${IMAP_TARGET_HOST}" --user2 "${target_user}" --password2 "${target_password}" ${IMAP_TARGET_SSL_FLAGS} \
         --usecache --nofoldersizes --tmpdir /tmp --logfile "${logfile}" 2>>"${LOG_FILE}"
       log_line "warte 30 sec"
@@ -312,7 +313,7 @@ function mail_backup {
 
       cat >"${mbsync_config}" <<EOF
 IMAPAccount source
-Host ${IMAP_SOURCE_HOST}
+Host ${source_host}
 User ${address}
 Pass ${password}
 SSLType ${MAILDIR_SSL_TYPE}
@@ -475,9 +476,15 @@ function kas_api_backup() {
   mapfile -t mail_logins < <(echo "${mail_json}" | parse_json - "mail_login")
   mapfile -t mail_passwords < <(echo "${mail_json}" | parse_json - "mail_password")
   mapfile -t mail_addresses < <(echo "${mail_json}" | parse_json - "mail_email")
+  mapfile -t mail_hosts < <(echo "${mail_json}" | parse_json - "mail_server")
 
   if [ "${#mail_logins[@]}" -ne "${#mail_passwords[@]}" ] || [ "${#mail_logins[@]}" -ne "${#mail_addresses[@]}" ]; then
     echo "Mailkonto-Antwort ist unvollständig. Prüfen Sie die API-Antwort." >&2
+    exit 1
+  fi
+
+  if [ "${#mail_hosts[@]}" -ne 0 ] && [ "${#mail_hosts[@]}" -ne "${#mail_logins[@]}" ]; then
+    echo "Anzahl der Mail-Server unterscheidet sich von den Mailkonten. Prüfen Sie die API-Antwort." >&2
     exit 1
   fi
 
@@ -488,7 +495,12 @@ function kas_api_backup() {
   for i in "${!mail_logins[@]}"; do
     address="${mail_addresses[$i]}"
     password="${mail_passwords[$i]}"
-    mail_backup "${mail_logins[$i]}" "${password}" "${address}"
+    local source_host="${IMAP_SOURCE_HOST}"
+    if [ "${#mail_hosts[@]}" -eq "${#mail_logins[@]}" ] && [ -n "${mail_hosts[$i]-}" ]; then
+      source_host="${mail_hosts[$i]}"
+    fi
+
+    mail_backup "${mail_logins[$i]}" "${password}" "${address}" "${source_host}"
   done
 }
 
