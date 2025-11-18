@@ -65,6 +65,7 @@ KAS_LOGIN=${KAS_LOGIN:-""}
 KAS_AUTH_DATA=${KAS_AUTH_DATA:-""}
 KAS_AUTH_TYPE=${KAS_AUTH_TYPE:-"plain"}
 KAS_AUTH_OTP=${KAS_AUTH_OTP:-""}
+KAS_AUTH_TOTP_SECRET=${KAS_AUTH_TOTP_SECRET:-""}
 
 # IMAP-Backup Einstellungen
 IMAP_SOURCE_HOST=${IMAP_SOURCE_HOST:-"imap.kasserver.com"}
@@ -182,6 +183,9 @@ onboarding() {
   if [ "${ENABLE_KAS_API_BACKUP}" -eq 1 ]; then
     prompt_with_default "KAS_AUTH_TYPE" "KAS_AUTH_TYPE (plain/otp/session)"
     ensure_kas_api_credentials 0
+    if [ "${KAS_AUTH_TYPE}" = "otp" ]; then
+      prompt_for_value "KAS_AUTH_TOTP_SECRET" "KAS_AUTH_TOTP_SECRET (Base32, optional für automatische 2FA-Codes, leer lassen zum Überspringen)" 1 1
+    fi
   fi
 
   if [ -z "${IMAP_TARGET_HOST-}" ] && [ "${MAIL_BACKUP_STRATEGY}" = "imapsync" ]; then
@@ -207,6 +211,7 @@ KAS_API_ENDPOINT="${KAS_API_ENDPOINT}"
 KAS_LOGIN="${KAS_LOGIN}"
 KAS_AUTH_DATA="${KAS_AUTH_DATA}"
 KAS_AUTH_TYPE="${KAS_AUTH_TYPE}"
+KAS_AUTH_TOTP_SECRET="${KAS_AUTH_TOTP_SECRET}"
 EOF
 
   echo "Konfiguration wurde unter ${CONFIG_FILE} gespeichert."
@@ -367,6 +372,50 @@ function load_config {
   echo "Konfigurationsdatei ${config_path} wurde nicht gefunden, statische Aufträge werden übersprungen. Kopieren Sie die Musterdatei aus ${SCRIPT_DIR}/etc/backup_kas.conf nach ${config_path} oder nutzen Sie --onboarding." >&2
 }
 
+function generate_totp {
+  local secret=$1
+
+  python3 - "$secret" <<'PY'
+import base64
+import hashlib
+import hmac
+import struct
+import sys
+import time
+
+secret = sys.argv[1].strip().replace(" ", "")
+if not secret:
+    sys.exit(1)
+
+padding = '=' * (-len(secret) % 8)
+try:
+    key = base64.b32decode(secret + padding, casefold=True)
+except Exception:
+    sys.exit(2)
+
+counter = int(time.time()) // 30
+msg = struct.pack('>Q', counter)
+digest = hmac.new(key, msg, hashlib.sha1).digest()
+offset = digest[-1] & 0x0F
+code = (struct.unpack('>I', digest[offset:offset+4])[0] & 0x7FFFFFFF) % 1_000_000
+print(f"{code:06d}")
+PY
+}
+
+refresh_kas_otp_from_secret() {
+  if [ "${KAS_AUTH_TYPE}" != "otp" ]; then
+    return 0
+  fi
+
+  if [ -n "${KAS_AUTH_TOTP_SECRET-}" ]; then
+    if ! KAS_AUTH_OTP=$(generate_totp "${KAS_AUTH_TOTP_SECRET}"); then
+      echo "Warnung: Konnte keinen TOTP-Code aus KAS_AUTH_TOTP_SECRET erzeugen." >&2
+    fi
+  fi
+
+  return 0
+}
+
 function ensure_kas_api_credentials {
   local require_otp=${1:-1}
 
@@ -374,13 +423,19 @@ function ensure_kas_api_credentials {
   prompt_for_value "KAS_AUTH_DATA" "KAS_AUTH_DATA (API-Passwort)" 1
 
   if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ "${require_otp}" -eq 1 ]; then
-    prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+    refresh_kas_otp_from_secret
+    if [ -z "${KAS_AUTH_OTP}" ]; then
+      prompt_for_value "KAS_AUTH_OTP" "KAS_AUTH_OTP (aktueller 2FA-Code)" 0 0
+    fi
   fi
 }
 
 function kas_api_request() {
   local action=$1
   shift
+
+  refresh_kas_otp_from_secret
+
   local data=("-d" "kas_login=${KAS_LOGIN}" "-d" "kas_auth_type=${KAS_AUTH_TYPE}" "-d" "kas_auth_data=${KAS_AUTH_DATA}" "-d" "kas_action=${action}")
 
   if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ -n "${KAS_AUTH_OTP}" ]; then
