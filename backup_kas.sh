@@ -98,6 +98,7 @@ ENABLE_KAS_API_BACKUP=${ENABLE_KAS_API_BACKUP:-0}
 
 # KAS API-Zugänge
 KAS_API_ENDPOINT=${KAS_API_ENDPOINT:-"https://kasapi.kasserver.com/soap/v2.0/"}
+KAS_SOAP_WSDL=${KAS_SOAP_WSDL:-"https://kasapi.kasserver.com/soap/wsdl.php?wsdl"}
 KAS_SESSION_LOGIN_URL=${KAS_SESSION_LOGIN_URL:-"https://kas.all-inkl.com/"}
 KAS_LOGIN=${KAS_LOGIN:-""}
 KAS_PASSWORD=${KAS_PASSWORD:-""}
@@ -547,60 +548,30 @@ function kas_api_request() {
 
   refresh_kas_otp_from_secret
 
-  local data=("-d" "kas_login=${KAS_LOGIN}" "-d" "kas_auth_type=${KAS_AUTH_TYPE}" "-d" "kas_auth_data=${KAS_AUTH_DATA}" "-d" "kas_action=${action}")
-  local debug_params=("kas_login=${KAS_LOGIN}" "kas_auth_type=${KAS_AUTH_TYPE}" "kas_auth_data=<hidden>" "kas_action=${action}")
+  local php_script="${SCRIPT_DIR}/kas_api_soap.php"
+  if [ ! -f "${php_script}" ]; then
+    echo "Fehler: SOAP-Hilfsskript ${php_script} fehlt." >&2
+    return 1
+  fi
+
+  local soap_args=("--wsdl" "${KAS_SOAP_WSDL}" "--endpoint" "${KAS_API_ENDPOINT}" "--action" "${action}" "--login" "${KAS_LOGIN}" "--auth-type" "${KAS_AUTH_TYPE}" "--auth-data" "${KAS_AUTH_DATA}")
+  local debug_params=("kas_login=${KAS_LOGIN}" "kas_auth_type=${KAS_AUTH_TYPE}" "kas_auth_data=<hidden>" "kas_action=${action}" "wsdl=${KAS_SOAP_WSDL}" "endpoint=${KAS_API_ENDPOINT}")
 
   if [ "${KAS_AUTH_TYPE}" = "otp" ] && [ -n "${KAS_AUTH_OTP}" ]; then
-    data+=("-d" "kas_auth_otp=${KAS_AUTH_OTP}")
+    soap_args+=("--otp" "${KAS_AUTH_OTP}")
     debug_params+=("kas_auth_otp=<hidden>")
   fi
 
   for param in "$@"; do
-    data+=("-d" "kas_params[${param%%=*}]=${param#*=}")
+    soap_args+=("--param" "${param}")
     debug_params+=("kas_params[${param%%=*}]=${param#*=}")
   done
-  debug_log "KAS API Request: ${KAS_API_ENDPOINT} $(printf '%s ' "${debug_params[@]}")"
+
+  debug_log "KAS API Request (SOAP): $(printf '%s ' "${debug_params[@]}")"
 
   local response
-  local http_code
-  local endpoint="${KAS_API_ENDPOINT}"
-  local attempted_fallback=0
-
-  while :; do
-    if ! http_code=$(curl -sS -w "%{http_code}" -o /tmp/kas_api_response.$$ "${endpoint}" "${data[@]}"); then
-      echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
-      rm -f /tmp/kas_api_response.$$
-      return 1
-    fi
-
-    if [ "${http_code}" -eq 404 ]; then
-      local next_endpoint=""
-      if [[ "${endpoint}" != *"index.php" ]]; then
-        next_endpoint="${endpoint%/}/index.php"
-      elif [[ "${endpoint}" == */v2.0/index.php ]]; then
-        next_endpoint="${endpoint%/v2.0/index.php}/index.php"
-      fi
-
-      if [ -n "${next_endpoint}" ] && [ "${next_endpoint}" != "${endpoint}" ]; then
-        debug_log "API antwortete mit 404, versuche erneut mit ${next_endpoint}."
-        endpoint="${next_endpoint}"
-        attempted_fallback=1
-        continue
-      fi
-    fi
-    break
-  done
-
-  if [ "${attempted_fallback}" -eq 1 ]; then
-    KAS_API_ENDPOINT="${endpoint}"
-  fi
-
-  response=$(cat /tmp/kas_api_response.$$)
-  rm -f /tmp/kas_api_response.$$
-
-  if [ "${http_code}" -ge 400 ]; then
-    echo "Fehler: API-Aufruf für Aktion ${action} scheiterte mit HTTP ${http_code}. Prüfen Sie KAS_API_ENDPOINT und Zugangsdaten." >&2
-    debug_log "KAS API Error (${action}, HTTP ${http_code}): ${response}"
+  if ! response=$(php "${php_script}" "${soap_args[@]}"); then
+    echo "Fehler: API-Aufruf für Aktion ${action} fehlgeschlagen." >&2
     return 1
   fi
 
