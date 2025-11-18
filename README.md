@@ -36,12 +36,12 @@ Aktivieren Sie `ENABLE_KAS_API_BACKUP=1`, setzen Sie `KAS_LOGIN` und `KAS_AUTH_D
 
 ### Statische Konfiguration
 - Hinterlegen Sie zusätzliche Sicherungen in `/etc/backup_kas.conf` oder einer eigenen Datei und setzen Sie `KAS_CONFIG_FILE` entsprechend.
-- Falls keine System-Konfiguration existiert, nutzt das Skript automatisch die mitgelieferte Datei `etc/backup_kas.conf` im Skriptverzeichnis, sofern `KAS_CONFIG_FILE` nicht gesetzt ist.
+- Liegt die Datei nicht unter `/etc/backup_kas.conf`, müssen Sie sie explizit über `KAS_CONFIG_FILE` setzen; die mitgelieferte Datei `etc/backup_kas.conf` dient nur als Muster und wird nicht automatisch geladen.
 - Die Datei kann sowohl Funktionsaufrufe (z. B. `mirror ...`) als auch Variablen enthalten. Fehlende Pflichtwerte wie `KAS_LOGIN`/`KAS_AUTH_DATA` oder `IMAP_TARGET_HOST` werden bei interaktiven Aufrufen abgefragt.
 - Beispiele für `mirror`- und `database_backup`-Aufrufe sowie konfigurierbare Variablen finden Sie in `etc/backup_kas.conf`.
 
 ### Geführtes Onboarding
-Rufen Sie `./backup_kas.sh --onboarding` auf, um interaktiv die wichtigsten Variablen (z. B. `BACKUP_PATH`, `HOST`, `LOG_FILE`, IMAP-Zielwerte sowie API-Zugangsdaten) abzufragen und in `etc/backup_kas.conf` zu speichern. Läuft das Skript interaktiv ohne vorhandene Konfiguration, startet das Onboarding automatisch.
+Rufen Sie `./backup_kas.sh --onboarding` auf, um interaktiv die wichtigsten Variablen (z. B. `BACKUP_PATH`, `HOST`, `LOG_FILE`, IMAP-Zielwerte sowie API-Zugangsdaten) abzufragen und in `/etc/backup_kas.conf` zu speichern. Läuft das Skript interaktiv ohne vorhandene Konfiguration, startet das Onboarding automatisch.
 
 ## Backups ausführen
 ```bash
